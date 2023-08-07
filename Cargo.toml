@@ -1,0 +1,12 @@
+[package]
+name = "project-name"
+version = "0.1.0"
+authors = []
+edition = "2021"
+publish = false
+
+[dependencies]
+hello-world = { git = "ssh://git@gitlab.com/famedly/company/backend/libraries/hello-world.git", branch = "main" } # To make sure git dependencies work in CI
+
+[build-dependencies]
+vergen = "6.0.0" # vergen passes metadata like the version and git commit hash to cargo as a compile-time environment variables
