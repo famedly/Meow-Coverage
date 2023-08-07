@@ -1,21 +1,101 @@
-# Project Name
+# Meow! Coverage
 
-[![pipeline status][badge-pipeline-img]][badge-pipeline-url]
-[![coverage report][badge-coverage-img]][badge-coverage-url]
-[![docs main][badge-docs-main-img]][badge-docs-main-url]
-
-[badge-pipeline-img]: https://gitlab.com/famedly/company/backend/templates/service-template/badges/main/pipeline.svg
-[badge-pipeline-url]: https://gitlab.com/famedly/company/backend/templates/service-template/-/commits/main
-[badge-coverage-img]: https://gitlab.com/famedly/company/backend/templates/service-template/badges/main/coverage.svg
-[badge-coverage-url]: https://gitlab.com/famedly/company/backend/templates/service-template/-/commits/main
-[badge-docs-main-img]: https://img.shields.io/badge/docs-main-blue
-[badge-docs-main-url]: https://famedly.gitlab.io/company/backend/templates/service-template/project_name/index.html
-
-Short description of the project.
+A GitHub-integrated code coverage visualiser, written in Rust.
 
 ## Getting Started
 
-Instructions of how to get the project running.
+Here are two sample GitHub action workflows, one for handling PRs, and one for handling new commits in main.
+
+### Pull Request Sample
+
+```yaml
+on: [pull_request]
+
+jobs:
+  pull_coverage:
+    name: Generate Coverage
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          repository: ${{ github.event.pull_request.base.full_name }}
+          path: base
+
+      - name: Checkout current repository
+        uses: actions/checkout@v3
+        with:
+          path: head
+
+      - name: Install toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- --profile minimal --default-toolchain nightly --component llvm-tools-preview -y
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Run cargo-llvm-cov on base
+        run: cargo llvm-cov --lcov --output-path $GITHUB_WORKSPACE/old-lcov.info
+        working-directory: base
+
+      - name: Run cargo-llvm-cov on current
+        run: cargo llvm-cov --lcov --output-path $GITHUB_WORKSPACE/new-lcov.info
+        working-directory: head
+
+      - name: Meow Coverage
+        id: coverage-report
+        uses: famedly/meow-coverage@main
+        with:
+          new-lcov-file: 'new-lcov.info'
+          old-lcov-file: 'old-lcov.info'
+          source-prefix: 'src/'
+          pr-number: ${{ github.event.pull_request.number }}
+          repo-name: ${{ github.repository }}
+          commit-id: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### Change to `main` Branch Sample
+
+```yaml
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  main_coverage:
+    name: Generate Main Coverage
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install toolchain
+        run: curl https://sh.rustup.rs -sSf | sh -s -- --profile minimal --default-toolchain nightly --component llvm-tools-preview -y
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov
+
+      - name: Run cargo-llvm-cov on main branch
+        run: cargo llvm-cov --lcov --output-path $GITHUB_WORKSPACE/lcov.info
+
+      - name: Meow Coverage
+        id: coverage-report
+        uses: famedly/meow-coverage@main
+        with:
+          new-lcov-file: 'lcov.info'
+          source-prefix: 'src/'
+          repo-name: ${{ github.repository }}
+          commit-id: ${{ github.event.after }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+```
 
 ## Lints
 

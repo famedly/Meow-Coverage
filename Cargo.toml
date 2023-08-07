@@ -1,12 +1,20 @@
 [package]
-name = "project-name"
+name = "meow-coverage"
 version = "0.1.0"
-authors = []
+authors = ["EliseZeroTwo <mail@elise.moe>"]
 edition = "2021"
 publish = false
 
 [dependencies]
-hello-world = { git = "ssh://git@gitlab.com/famedly/company/backend/libraries/hello-world.git", branch = "main" } # To make sure git dependencies work in CI
-
-[build-dependencies]
-vergen = "6.0.0" # vergen passes metadata like the version and git commit hash to cargo as a compile-time environment variables
+clap = { version = "4.3.19", features = ["derive"] }
+hex = "0.4.3"
+html-to-string-macro = "0.2.5"
+itertools = "0.11.0"
+lcov = "0.8.1"
+octocrab = "0.29.1"
+patch = "0.7.0"
+serde = "1.0.180"
+serde_json = "1.0.104"
+sha2 = "0.10.7"
+thiserror = "1.0.44"
+tokio = { version = "1.29.1", features = ["full"] }
