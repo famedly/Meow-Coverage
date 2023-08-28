@@ -6,7 +6,7 @@ branding:
 inputs:
   source-prefix:
     description: "Prefix for locating source files in Lcov paths (for example 'src/')"
-    required: true
+    required: false
   pr-number:
     description: "Pull Request Identifier, mandatory if pr-based"
     required: false
@@ -15,15 +15,27 @@ inputs:
     required: true
   commit-id:
     description: "Commit ID"
-    required: true
+    required: false
   github-token:
     description: "GitHub Token"
     required: true
+  branch:
+    description: "Branch name"
+    required: false
+  coverage-repo:
+    description: "Optional repository name for storing reports for visualisation"
+    required: false
+  coverage-team:
+    description: "Optional team for storing reports for visualisation"
+    required: false
   new-lcov-file:
     description: "New Lcov file path"
-    required: true
+    required: false
   old-lcov-file:
     description: "Previous Lcov file path"
+    required: false
+  rebuild-records:
+    description: "Path to records for rebuilding centralised coverage report"
     required: false
 runs:
   using: "docker"
@@ -36,3 +48,7 @@ runs:
     MEOWCOV_NEW_LCOV: ${{ inputs.new-lcov-file }}
     MEOWCOV_OLD_LCOV: ${{ inputs.old-lcov-file }}
     MEOWCOV_PR_NUMBER: ${{ inputs.pr-number }}
+    MEOWCOV_BRANCH: ${{ inputs.branch }}
+    MEOWCOV_COVERAGE_REPO: ${{ inputs.coverage-repo }}
+    MEOWCOV_COVERAGE_TEAM: ${{ inputs.coverage-team }}
+    MEOWCOV_REBUILD_RECORDS: ${{ inputs.rebuild-records }}

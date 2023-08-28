@@ -8,6 +8,8 @@ use lcov::{report::ParseError, Record, Report};
 pub struct LcovFileCoverage {
 	/// File name
 	pub filename: String,
+	/// Percentage file coverage
+	pub percentage: f64,
 	/// Untested lines
 	pub lines: Vec<u32>,
 }
@@ -48,18 +50,52 @@ impl LcovWrapper {
 	#[must_use]
 	pub fn group_data(&self) -> Vec<LcovFileCoverage> {
 		let mut files = Vec::new();
+		let mut lines_hit = None;
+		let mut lines_found = None;
 
 		for record in &self.0 {
 			match record {
-				Record::SourceFile { path } => files.push(LcovFileCoverage {
-					filename: path.to_string_lossy().to_string(),
-					lines: Vec::new(),
-				}),
+				Record::SourceFile { path } => {
+					lines_hit = None;
+					lines_found = None;
+
+					files.push(LcovFileCoverage {
+						filename: path.to_string_lossy().to_string(),
+						percentage: 0_f64,
+						lines: Vec::new(),
+					});
+				}
 				Record::LineData { line, count, .. } => {
 					if *count == 0 {
 						if let Some(last) = files.last_mut() {
 							last.lines.push(*line);
 						}
+					}
+				}
+				Record::LinesHit { hit } => {
+					lines_hit = Some(*hit);
+
+					if let Some(found) = lines_found {
+						let percentage = f64::from(*hit) / f64::from(found);
+						if let Some(last) = files.last_mut() {
+							last.percentage = percentage;
+						}
+
+						lines_found = None;
+						lines_hit = None;
+					}
+				}
+				Record::LinesFound { found } => {
+					lines_found = Some(*found);
+
+					if let Some(hit) = lines_hit {
+						let percentage = f64::from(hit) / f64::from(*found);
+						if let Some(last) = files.last_mut() {
+							last.percentage = percentage;
+						}
+
+						lines_found = None;
+						lines_hit = None;
 					}
 				}
 				_ => {}
