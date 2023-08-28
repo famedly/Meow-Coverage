@@ -1,53 +1,107 @@
 //! A code coverage visualiser integrated into GitHub
 
-use std::{borrow::Cow, collections::HashMap};
+use std::path::PathBuf;
 
 use ::lcov::report::ParseError;
 use clap::Parser;
-use helpers::{create_review_comment, line_changed_in_hunk, lines_in_same_hunk, path_split};
-use sha2::{Digest, Sha256};
 use thiserror::Error;
+use tracking::Team;
 
-use crate::lcov::LcovWrapper;
+mod coverage;
+pub mod github_api;
+mod tracking;
 
-mod helpers;
-mod html;
-mod lcov;
+/// Meow-Coverage CLI Main Command
+#[derive(Debug, clap::Parser)]
+#[clap(author, version, about, long_about = None)]
+enum CliMainCommand {
+	/// Centralised coverage tracking repo operations
+	Tracking {
+		/// Coverage repository in format `OWNER/REPO`
+		#[clap(long)]
+		coverage_repo_name: String,
+		/// Tracking subcommand
+		#[clap(subcommand)]
+		command: CliTrackingCommand,
+	},
+	/// Analyse coverage for a single run
+	CoverageRun {
+		/// Prefix for locating source files in Lcov paths (for example 'src/')
+		#[clap(long)]
+		source_prefix: String,
+
+		/// Commit ID
+		#[clap(long)]
+		commit_id: String,
+
+		/// New Lcov file path
+		#[clap(long)]
+		new_lcov_file: String,
+
+		/// Choose if Push or PullRequest based
+		#[clap(subcommand)]
+		command: CliCoverageCommand,
+	},
+}
 
 /// Meow-Coverage CLI Arguments
 #[derive(Debug, clap::Parser)]
 #[clap(author, version, about, long_about = None)]
 struct CliArgs {
-	/// Prefix for locating source files in Lcov paths (for example 'src/')
+	/// GitHub API Token
 	#[clap(long)]
-	source_prefix: String,
+	github_token: String,
 
 	/// Repository name in format `OWNER/REPO`
 	#[clap(long)]
 	repo_name: String,
 
-	/// Commit ID
-	#[clap(long)]
-	commit_id: String,
-
-	/// GitHub API Token
-	#[clap(long)]
-	github_token: String,
-
-	/// New Lcov file path
-	#[clap(long)]
-	new_lcov_file: String,
-
-	/// Choose if Push or PullRequest based
+	/// Choose if analysing coverage for a single run, or managing the
+	/// centralised coverage tracking repo
 	#[clap(subcommand)]
-	command: Commands,
+	command: CliMainCommand,
 }
 
-/// Subcommand wrapper
+/// Subcommand wrapper for managing the centralised coverage tracking repo
 #[derive(Debug, clap::Subcommand)]
-enum Commands {
+enum CliTrackingCommand {
+	/// Rebuild the `main` branch, this should only be called by the GitHub
+	/// action for the repo
+	Rebuild {
+		/// Path to where the `records` branch of the tracking repository is
+		/// cloned
+		#[clap(long = "records")]
+		tracking_repo_records: PathBuf,
+
+		/// Repository branch to generate individualised report on
+		#[clap(long)]
+		branch: String,
+	},
+	/// Remove a branch of a repository from the tracking records
+	RemoveBranch {
+		/// Repository branch to remove
+		#[clap(long)]
+		branch: String,
+	},
+}
+
+/// Subcommand wrapper for coverage run operations
+#[derive(Debug, clap::Subcommand)]
+enum CliCoverageCommand {
 	/// Run for a commit
 	Push,
+	/// Run for a commit and collect the report afterwards
+	PushWithReport {
+		/// Branch for the commit
+		#[clap(long)]
+		branch: String,
+		/// Repository for submitting the coverage report record to
+		#[clap(long)]
+		coverage_repo: String,
+		/// Repository for submitting the coverage report record to
+		#[clap(long)]
+		coverage_team: Team,
+	},
 	/// Run for a PR
 	PullRequest {
 		/// Pull request identifier
@@ -75,238 +129,28 @@ pub enum MeowCoverageError {
 	/// Patch parsing error [patch::ParseError]
 	#[error("Patch Parse Error: {0}")]
 	Patch(String),
+	/// Hyper error
+	#[error("Hyper Error: {0}")]
+	Hyper(#[from] hyper::Error),
+	/// serde_json error
+	#[error("Serde Error: {0}")]
+	SerdeJson(#[from] serde_json::Error),
+	/// GitHub token does not have permission to access the contents of the
+	/// coverage repo
+	#[error("Token does not have permission to access coverage repo")]
+	MissingAccessToCoverageRepo,
+	/// [std::io::Error] vairant
+	#[error(transparent)]
+	Io(#[from] std::io::Error),
+	/// Attempted to build a report on a branch that is missing valid reports
+	#[error("Attempted to build a report on a branch that is missing valid reports")]
+	ReportMissingInfo,
 }
 
 impl From<patch::ParseError<'_>> for MeowCoverageError {
 	fn from(value: patch::ParseError<'_>) -> Self {
 		Self::Patch(format!("{}", value))
 	}
-}
-
-/// File coverage wrapper for PRs
-#[derive(Debug)]
-pub struct PullFileCoverageWrapper {
-	/// File Git SHA
-	pub sha: String,
-	/// Lines collected by range by hunk, the hunking is a limitation of the
-	/// GitHub API sadly
-	pub hunked_lines: Vec<(u32, u32)>,
-	/// Collection of unclumped lines
-	pub raw_lines: Vec<u32>,
-	/// File path
-	pub realpath: String,
-}
-
-/// File coverage wrapper for commits
-#[derive(Debug)]
-pub struct PushFileCoverageWrapper {
-	/// File Git SHA
-	pub sha: String,
-	/// Collection of unclumped lines
-	pub raw_lines: Vec<u32>,
-	/// File Path
-	pub realpath: String,
-}
-
-/// Generates a report for a Pull Request
-#[allow(clippy::too_many_lines)]
-async fn generate_pr_coverage_report(
-	repo_name: &str,
-	source_prefix: &str,
-	commit_id: &str,
-	pr_number: u64,
-	new_lcov_file: &str,
-	old_lcov_file: Option<&str>,
-) -> Result<(), MeowCoverageError> {
-	let new_lcov = LcovWrapper::new(new_lcov_file)?;
-
-	let percentage_difference = match old_lcov_file {
-		Some(old_lcov_file) => {
-			Some(LcovWrapper::new(old_lcov_file)?.percentage_difference(&new_lcov))
-		}
-		None => None,
-	};
-
-	let (owner, repo) = repo_name.split_once('/').ok_or(MeowCoverageError::RepoNameMissingSlash)?;
-
-	let untested_changes = {
-		let file_diff_meta = octocrab::instance()
-			.pulls(owner, repo)
-			.list_files(pr_number)
-			.await?
-			.into_iter()
-			.filter_map(|file_diff| {
-				file_diff.patch.map(|patch| {
-					let patch = format!(
-						"--- a/{}\n+++ b/{}\n{}",
-						file_diff.previous_filename.as_deref().unwrap_or(&file_diff.filename),
-						file_diff.filename,
-						patch
-					);
-
-					(file_diff.filename, patch)
-				})
-			})
-			.collect::<HashMap<_, _>>();
-
-		let grouped_data = new_lcov.group_data();
-
-		grouped_data
-			.into_iter()
-			.filter_map(|coverage| {
-				let path = path_split(coverage.filename.as_str(), source_prefix);
-
-				let patch_str =
-					file_diff_meta.get(&path).map(|patch| match patch.ends_with('\n') {
-						true => patch.clone(),
-						false => format!("{}\n", patch),
-					})?;
-
-				#[allow(clippy::print_stderr)]
-				let patch = match patch::Patch::from_single(&patch_str) {
-					Ok(patch) => patch,
-					Err(why) => {
-						eprintln!("Error parsing patch, continuing with next (why: {})", why);
-						return None;
-					}
-				};
-
-				let raw_lines: Vec<_> = coverage
-					.lines
-					.into_iter()
-					.filter(|line| {
-						patch.hunks.iter().any(|hunk| line_changed_in_hunk(hunk, u64::from(*line)))
-					})
-					.collect();
-
-				if raw_lines.is_empty() {
-					return None;
-				}
-
-				let hunked_lines: Vec<(u32, u32)> =
-					raw_lines.iter().copied().fold(Vec::new(), |mut hunked_lines, line| {
-						if let Some(last) = hunked_lines.last_mut() {
-							if lines_in_same_hunk(&patch.hunks, u64::from(last.1), u64::from(line))
-							{
-								last.1 = line;
-								return hunked_lines;
-							}
-						}
-
-						hunked_lines.push((line, line));
-						hunked_lines
-					});
-
-				Some(PullFileCoverageWrapper {
-					hunked_lines,
-					raw_lines,
-					sha: {
-						let mut hasher = Sha256::new();
-						hasher.update(path.as_str());
-						hex::encode(hasher.finalize())
-					},
-					realpath: path,
-				})
-			})
-			.collect::<Vec<_>>()
-	};
-
-	octocrab::instance()
-		.issues(owner, repo)
-		.create_comment(
-			pr_number,
-			format!(
-				"<h3>Meow! Coverage</h3>Total: {:.2}%\n\n{}\n\n{}",
-				new_lcov.percentage(),
-				match percentage_difference {
-					Some(delta) => Cow::Owned(format!("Delta: {:.2}%\n\n", delta)),
-					None => Cow::Borrowed(""),
-				},
-				match untested_changes.is_empty() {
-					true => Cow::Borrowed("🐾 All changes are tested! 🐾"),
-					false => Cow::Owned(html::build_pull_summary(
-						owner,
-						repo,
-						pr_number,
-						&untested_changes
-					)),
-				}
-			),
-		)
-		.await?;
-
-	for change in untested_changes {
-		for (first_line, final_line) in change.hunked_lines {
-			create_review_comment(
-				owner,
-				repo,
-				pr_number,
-				commit_id,
-				change.realpath.as_str(),
-				first_line,
-				final_line,
-			)
-			.await?;
-		}
-	}
-
-	Ok(())
-}
-
-/// Generates a report for a commit
-async fn generate_push_coverage_report(
-	lcov_path: &str,
-	repo_name: &str,
-	source_prefix: &str,
-	commit_sha: &str,
-) -> Result<(), MeowCoverageError> {
-	let lcov = LcovWrapper::new(lcov_path)?;
-
-	let (owner, repo) = repo_name.split_once('/').ok_or(MeowCoverageError::RepoNameMissingSlash)?;
-
-	let untested_changes = lcov
-		.group_data()
-		.into_iter()
-		.filter_map(|coverage| {
-			if coverage.lines.is_empty() {
-				return None;
-			}
-
-			let path = path_split(coverage.filename.as_str(), source_prefix);
-			Some(PushFileCoverageWrapper {
-				raw_lines: coverage.lines,
-				sha: {
-					let mut hasher = Sha256::new();
-					hasher.update(path.as_str());
-					hex::encode(hasher.finalize())
-				},
-				realpath: path,
-			})
-		})
-		.collect::<Vec<_>>();
-
-	octocrab::instance()
-		.commits(owner, repo)
-		.create_comment(
-			commit_sha,
-			format!(
-				"<h3>Meow! Coverage</h3>Total: {:.2}%\n\n{}",
-				lcov.percentage(),
-				match untested_changes.is_empty() {
-					true => Cow::Borrowed("🐾 All changes are tested! 🐾"),
-					false => Cow::Owned(html::build_push_summary(
-						owner,
-						repo,
-						commit_sha,
-						&untested_changes
-					)),
-				}
-			),
-		)
-		.send()
-		.await?;
-
-	Ok(())
 }
 
 #[tokio::main]
@@ -316,27 +160,59 @@ async fn main() -> Result<(), MeowCoverageError> {
 	octocrab::initialise(octocrab::Octocrab::builder().personal_token(args.github_token).build()?);
 
 	match args.command {
-		Commands::PullRequest { pr_number, old_lcov_file } => {
-			generate_pr_coverage_report(
-				args.repo_name.as_str(),
-				args.source_prefix.as_str(),
-				args.commit_id.as_str(),
-				pr_number,
-				args.new_lcov_file.as_str(),
-				old_lcov_file.as_deref(),
-			)
-			.await?;
-		}
-		Commands::Push => {
-			generate_push_coverage_report(
-				args.new_lcov_file.as_str(),
-				args.repo_name.as_str(),
-				args.source_prefix.as_str(),
-				args.commit_id.as_str(),
-			)
-			.await?;
+		CliMainCommand::Tracking { coverage_repo_name, command } => match command {
+			CliTrackingCommand::Rebuild { tracking_repo_records, branch } => {
+				tracking::rebuild(
+					&tracking_repo_records,
+					coverage_repo_name.as_str(),
+					args.repo_name.as_str(),
+					branch.as_str(),
+				)
+				.await
+			}
+			CliTrackingCommand::RemoveBranch { branch } => {
+				tracking::remove_branch_from_tracking(
+					coverage_repo_name.as_str(),
+					args.repo_name.as_str(),
+					branch.as_str(),
+				)
+				.await
+			}
+		},
+		CliMainCommand::CoverageRun { source_prefix, commit_id, new_lcov_file, command } => {
+			match command {
+				CliCoverageCommand::PullRequest { pr_number, old_lcov_file } => {
+					coverage::generate_pr_coverage_report(
+						args.repo_name.as_str(),
+						source_prefix.as_str(),
+						commit_id.as_str(),
+						pr_number,
+						new_lcov_file.as_str(),
+						old_lcov_file.as_deref(),
+					)
+					.await
+				}
+				CliCoverageCommand::Push => {
+					coverage::generate_push_coverage_report(
+						new_lcov_file.as_str(),
+						args.repo_name.as_str(),
+						source_prefix.as_str(),
+						commit_id.as_str(),
+						None,
+					)
+					.await
+				}
+				CliCoverageCommand::PushWithReport { branch, coverage_repo, coverage_team } => {
+					coverage::generate_push_coverage_report(
+						new_lcov_file.as_str(),
+						args.repo_name.as_str(),
+						source_prefix.as_str(),
+						commit_id.as_str(),
+						Some((branch.as_str(), coverage_repo.as_str(), coverage_team)),
+					)
+					.await
+				}
+			}
 		}
 	}
-
-	Ok(())
 }

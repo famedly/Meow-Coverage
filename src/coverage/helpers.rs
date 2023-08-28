@@ -7,43 +7,6 @@ pub fn path_split(path: &str, source_prefix: &str) -> String {
 		.map_or_else(|| String::from(path), |(_, val)| format!("{}{}", source_prefix, val))
 }
 
-/// Create a review comment on a PR
-pub async fn create_review_comment(
-	owner: &str,
-	repo: &str,
-	pull_id: u64,
-	commit_id: &str,
-	path: &str,
-	first_line: u32,
-	final_line: u32,
-) -> Result<(), octocrab::Error> {
-	let route = format!("/repos/{}/{}/pulls/{}/comments", owner, repo, pull_id);
-
-	let body = match first_line == final_line {
-		true => serde_json::json!({
-			"body": "🐈‍⬛ Untested Line 🐈‍⬛",
-			"commit_id": commit_id,
-			"path": path,
-			"start_side": "RIGHT",
-			"line": final_line,
-			"side": "RIGHT"
-		}),
-		false => serde_json::json!({
-			"body": "🐈‍⬛ Untested Lines 🐈‍⬛",
-			"commit_id": commit_id,
-			"path": path,
-			"start_line": first_line,
-			"start_side": "RIGHT",
-			"line": final_line,
-			"side": "RIGHT"
-		}),
-	};
-
-	let _: serde_json::Value = octocrab::instance().post(route, Some(&body)).await?;
-
-	Ok(())
-}
-
 /// Check if a line was changed in a [patch::Hunk]
 pub fn line_changed_in_hunk(hunk: &patch::Hunk, target_line: u64) -> bool {
 	let mut current_line = hunk.new_range.start;
