@@ -16,5 +16,5 @@ patch = "0.7.0"
 serde = "1.0.188"
 serde_json = "1.0.104"
 sha2 = "0.10.7"
-thiserror = "1.0.47"
+thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["full"] }
