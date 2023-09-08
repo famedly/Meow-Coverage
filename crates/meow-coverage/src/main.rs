@@ -2,18 +2,15 @@
 
 use std::path::PathBuf;
 
-use ::lcov::report::ParseError;
 use clap::Parser;
-use thiserror::Error;
 use tracking::Team;
 
+mod api;
 mod coverage;
-pub mod github_api;
 mod tracking;
 
 /// Meow-Coverage CLI Main Command
-#[derive(Debug, clap::Parser)]
-#[clap(author, version, about, long_about = None)]
+#[derive(Debug, clap::Subcommand)]
 enum CliMainCommand {
 	/// Centralised coverage tracking repo operations
 	Tracking {
@@ -115,11 +112,11 @@ enum CliCoverageCommand {
 }
 
 /// Error collection
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum MeowCoverageError {
 	/// LCOV parsing error ([ParseError])
 	#[error("Lcov Parsing Failed: {0}")]
-	LcovParse(#[from] ParseError),
+	LcovParse(#[from] meow_coverage_shared::lcov::report::ParseError),
 	/// GitHub API Error ([octocrab::Error])
 	#[error("GitHub API Error: {0}")]
 	GitHub(#[from] octocrab::Error),
@@ -147,8 +144,8 @@ pub enum MeowCoverageError {
 	ReportMissingInfo,
 }
 
-impl From<patch::ParseError<'_>> for MeowCoverageError {
-	fn from(value: patch::ParseError<'_>) -> Self {
+impl From<meow_coverage_shared::patch::ParseError<'_>> for MeowCoverageError {
+	fn from(value: meow_coverage_shared::patch::ParseError<'_>) -> Self {
 		Self::Patch(format!("{}", value))
 	}
 }

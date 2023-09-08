@@ -3,8 +3,8 @@
 
 use octocrab::params::repos::Reference;
 
-use super::{author, make_report_path, RECORDS_BRANCH};
-use crate::{github_api::get_file_sha, MeowCoverageError};
+use super::{super::api::get_file_sha, author, make_report_path, RECORDS_BRANCH};
+use crate::MeowCoverageError;
 
 /// Remove a branch of a repository from the centralised coverage tracking
 /// records

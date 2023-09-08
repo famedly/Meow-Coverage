@@ -1,7 +1,14 @@
-//! Helpers for handling code coverage report in the `lcov` format
+//! Meow
+
+mod helpers;
+
 use std::path::Path;
 
-use lcov::{report::ParseError, Record, Report};
+pub use helpers::*;
+pub use lcov;
+use lcov::{report::ParseError, Reader, Record, Report};
+#[cfg(feature = "patch")]
+pub use patch;
 
 /// A per-file "coverage report" (contains only unhit lines)
 #[derive(Debug, Clone)]
@@ -19,12 +26,29 @@ pub struct LcovFileCoverage {
 pub struct LcovWrapper(Vec<Record>);
 
 impl LcovWrapper {
+	/// Build a new [LcovWrapper] from a report
+	pub fn with_report(report: &[u8]) -> Result<Self, ParseError> {
+		Report::from_reader(Reader::new(report))
+			.map(Report::into_records)
+			.map(Iterator::collect::<Vec<_>>)
+			.map(Self)
+	}
+
 	/// Build a new [LcovWrapper]
 	pub fn new<P: AsRef<Path>>(file_path: P) -> Result<Self, ParseError> {
 		Report::from_file(file_path)
 			.map(Report::into_records)
 			.map(Iterator::collect::<Vec<_>>)
 			.map(Self)
+	}
+
+	/// Calculate the amount of files present in the report
+	#[must_use]
+	pub fn file_count(&self) -> usize {
+		self.0.iter().fold(0, |count, record| match record {
+			Record::SourceFile { .. } => count + 1,
+			_ => count,
+		})
 	}
 
 	/// Calculate the percentage coverage
@@ -100,6 +124,10 @@ impl LcovWrapper {
 				}
 				_ => {}
 			}
+		}
+
+		for file in &mut files {
+			file.lines.sort();
 		}
 
 		files

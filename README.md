@@ -2,7 +2,19 @@
 
 A GitHub-integrated code coverage visualiser, written in Rust.
 
+Optionally includes a cargo subcommand for visualising code coverage of Rust projects locally (`cargo meow-coverage`) by utilising `cargo llvm-cov`.
+
 ## Getting Started
+
+### Locally
+
+To install the project you can run `cargo install --git ssh://git@github.com/famedly/Meow-Coverage.git --branch elise/local cargo-meow-coverage`.
+
+[`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) is also needed and can be installed with `cargo +stable install cargo-llvm-cov --locked`.
+
+Once installed you can run `cargo meow-coverage` in a Rust workspace. Optionally pass `--list-files` to produce a summary list. Optionally pass `--only-summary` to avoid printing specific file lines.
+
+### GitHub
 
 Here are two sample GitHub action workflows, one for handling PRs, and one for handling new commits in main.
 

@@ -4,8 +4,8 @@ use std::{borrow::Cow, path::Path};
 
 use time::OffsetDateTime;
 
-use super::{BranchCoverageRecordCollection, Team};
-use crate::{tracking::PercentWrapper, MeowCoverageError};
+use super::{BranchCoverageRecordCollection, PercentWrapper, Team};
+use crate::MeowCoverageError;
 
 /// Try and collect records
 fn try_collect_records(records: &Path) -> Result<[Vec<ReadmeCoverageEntry>; 6], MeowCoverageError> {
@@ -51,22 +51,24 @@ fn try_collect_records(records: &Path) -> Result<[Vec<ReadmeCoverageEntry>; 6], 
 				let branch_file_name = branch.file_name();
 
 				#[allow(clippy::print_stderr)]
-                let Some(owner_name) = owner_file_name.to_str() else {
-                    eprintln!("Unable to turn {:?} into String", owner_file_name);
-                    continue;
-                };
+				let Some(owner_name) = owner_file_name.to_str() else {
+					eprintln!("Unable to turn {:?} into String", owner_file_name);
+					continue;
+				};
 
 				#[allow(clippy::print_stderr)]
-                let Some(repo_name) = repo_file_name.to_str() else {
-                    eprintln!("Unable to turn {:?} into String", repo_file_name);
-                    continue;
-                };
+				let Some(repo_name) = repo_file_name.to_str() else {
+					eprintln!("Unable to turn {:?} into String", repo_file_name);
+					continue;
+				};
 
 				#[allow(clippy::print_stderr)]
-                let Some(branch_name) = branch_file_name.to_str().map(|value| value.trim_end_matches(".meowcov.json")) else {
-                    eprintln!("Unable to turn {:?} into String", branch_file_name);
-                    continue;
-                };
+				let Some(branch_name) =
+					branch_file_name.to_str().map(|value| value.trim_end_matches(".meowcov.json"))
+				else {
+					eprintln!("Unable to turn {:?} into String", branch_file_name);
+					continue;
+				};
 
 				let record_collection: BranchCoverageRecordCollection =
 					serde_json::from_reader(std::fs::File::open(branch.path())?)?;
@@ -299,7 +301,7 @@ pub fn build_coverage_report(
 	let file_cov = latest.files.iter().map(|map| {
             map
                 .iter()
-                .map(|(file_name, value)| format!("| [{file_name}](https://github.com/{repo_owner}/{repo}/blob/{branch}/{file_name}) | {cov}% | {lines} |\n", file_name = file_name, repo_owner = target_repo_owner, repo = target_repo, branch = branch, cov = PercentWrapper(value.percentage), lines = build_lines(target_repo_owner, target_repo, branch, file_name, &value.untested_lines))).collect::<String>()
+                .fold(String::new(), |val, (file_name, value)| val + &format!("| [{file_name}](https://github.com/{repo_owner}/{repo}/blob/{branch}/{file_name}) | {cov}% | {lines} |", file_name = file_name, repo_owner = target_repo_owner, repo = target_repo, branch = branch, cov = PercentWrapper(value.percentage), lines = build_lines(target_repo_owner, target_repo, branch, file_name, &value.untested_lines)))
     }).fold(String::from("| File Name | Coverage  | Untested Lines  |\n|-----------|-----------|-----------------|\n"), |l, r| l + r.as_ref());
 
 	Some(format!(

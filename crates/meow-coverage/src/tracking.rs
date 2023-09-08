@@ -11,7 +11,8 @@ pub use management::*;
 pub use models::*;
 use octocrab::models::repos::CommitAuthor;
 
-use crate::{github_api::get_file_sha, MeowCoverageError};
+use super::api::get_file_sha;
+use crate::MeowCoverageError;
 
 /// Constant for the `records` branch
 pub const RECORDS_BRANCH: &str = "records";
@@ -57,8 +58,13 @@ pub async fn rebuild(
 		serde_json::from_reader(std::fs::File::open(path)?)?
 	};
 
-	let Some(coverage_report) = visualisation::build_coverage_report(target_repo_owner, target_repo, branch, &record_collection) else {
-		return Ok(())
+	let Some(coverage_report) = visualisation::build_coverage_report(
+		target_repo_owner,
+		target_repo,
+		branch,
+		&record_collection,
+	) else {
+		return Ok(());
 	};
 	let readme = visualisation::build_readme(records, coverage_repo_owner, coverage_repo)?;
 

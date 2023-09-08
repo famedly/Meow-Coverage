@@ -2,14 +2,11 @@
 
 use std::{borrow::Cow, collections::HashMap};
 
+use meow_coverage_shared::{line_changed_in_hunk, lines_in_same_hunk, path_split, LcovWrapper};
 use sha2::{Digest, Sha256};
 
-use super::{
-	helpers::{line_changed_in_hunk, lines_in_same_hunk, path_split},
-	html,
-	lcov::LcovWrapper,
-};
-use crate::{github_api::create_review_comment, MeowCoverageError};
+use super::html;
+use crate::{api::create_review_comment, MeowCoverageError};
 
 /// File coverage wrapper for PRs
 #[derive(Debug)]
@@ -80,7 +77,7 @@ pub async fn generate_pr_coverage_report(
 					})?;
 
 				#[allow(clippy::print_stderr)]
-				let patch = match patch::Patch::from_single(&patch_str) {
+				let patch = match meow_coverage_shared::patch::Patch::from_single(&patch_str) {
 					Ok(patch) => patch,
 					Err(why) => {
 						eprintln!("Error parsing patch, continuing with next (why: {})", why);

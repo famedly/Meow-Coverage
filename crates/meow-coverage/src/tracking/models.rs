@@ -156,10 +156,8 @@ impl BranchCoverageRecordCollection {
 	#[must_use]
 	pub fn last_delta(&self) -> Option<i16> {
 		let (Some(newest), second_newest) = ({
-			let mut iter = self
-			.records
-			.iter()
-			.sorted_by(|l, r| Ord::cmp(&r.timestamp, &l.timestamp));
+			let mut iter =
+				self.records.iter().sorted_by(|l, r| Ord::cmp(&r.timestamp, &l.timestamp));
 			(iter.next(), iter.next())
 		}) else {
 			return None;
@@ -176,9 +174,10 @@ impl BranchCoverageRecordCollection {
 	pub fn delta(&self, period_start_ts: i64, period_end_ts: i64) -> Option<i16> {
 		let (Some(oldest), newest) = ({
 			let mut iter = self
-			.records
-			.iter()
-			.filter(|item| item.timestamp >= period_start_ts && item.timestamp <= period_end_ts).sorted_by(|l, r| Ord::cmp(&l.timestamp, &r.timestamp));
+				.records
+				.iter()
+				.filter(|item| item.timestamp >= period_start_ts && item.timestamp <= period_end_ts)
+				.sorted_by(|l, r| Ord::cmp(&l.timestamp, &r.timestamp));
 			(iter.next(), iter.last())
 		}) else {
 			return None;
