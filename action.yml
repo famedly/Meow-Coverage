@@ -39,7 +39,7 @@ inputs:
     required: false
 runs:
   using: "docker"
-  image: "Dockerfile"
+  image: "docker-oss.nexus.famedly.de/meow-coverage:v0.1.0"
   env:
     MEOWCOV_SOURCE_PREFIX: ${{ inputs.source-prefix }}
     MEOWCOV_REPO_NAME: ${{ inputs.repo-name }}
