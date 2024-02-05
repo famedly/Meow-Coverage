@@ -1,9 +1,11 @@
-FROM rust:1.71
+FROM rust:1.71 AS builder
 
-RUN mkdir /meow-coverage
-COPY . /meow-coverage
-RUN cargo install --path /meow-coverage
+WORKDIR /usr/src/meow-coverage
+COPY . .
+RUN cargo install --path .
 
+FROM debian:bookworm-slim
+COPY --from=builder /usr/local/cargo/bin/meow-coverage /usr/local/bin/meow-coverage
 ADD entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
